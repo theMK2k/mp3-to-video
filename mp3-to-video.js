@@ -16,6 +16,7 @@ const optionDefinitions = [
   { name: "verbose", alias: "v", type: Boolean },
   { name: "src", type: String, defaultOption: true },
   { name: "merge", alias: "m", type: Boolean },
+  { name: "image", alias: "i" },
 ];
 
 const options = commandLineArgs(optionDefinitions);
@@ -54,7 +55,7 @@ async function textToPng(text, fullPath) {
   });
 }
 
-async function processMergeFiles(cwd, files) {
+async function processMergeFiles(cwd, files, imagePath) {
   let concatList = "";
   let ffmpegMetadata = "";
   let totalRuntime = 0;
@@ -78,10 +79,8 @@ async function processMergeFiles(cwd, files) {
 
     logger.info("adding to merge list:", file);
 
-    // await processSingleFile(cwd, file);
     concatList += `${concatList ? "|" : "concat:"}${fullPath}`;
 
-    // TODO: generate Chapter Metadata
     const runtimeMs = await getRuntime(fullPath);
     ffmpegMetadata += `
 [CHAPTER]
@@ -97,7 +96,7 @@ title=${path.parse(file).name}
     logger.error("Error: no files to process!");
   }
 
-  ffmpegMetadata = `;FFMETADATA1${ffmpegMetadata}`
+  ffmpegMetadata = `;FFMETADATA1${ffmpegMetadata}`;
 
   const albumName = path.basename(cwd);
   logger.info("album name:", albumName);
@@ -105,8 +104,10 @@ title=${path.parse(file).name}
   const chaptersFullpath = path.join(cwd, `${albumName}.txt`);
   await fsExtra.writeFile(chaptersFullpath, ffmpegMetadata);
 
-  const pngFullpath = path.join(cwd, `${albumName}.png`);
-  await textToPng(albumName, pngFullpath);
+  if (!imagePath) {
+    await textToPng(albumName, imagePath);
+    imagePath = path.join(cwd, `${albumName}.png`);
+  }
 
   const outFullPath = path.join(cwd, `${albumName}.mp4`);
 
@@ -116,10 +117,10 @@ title=${path.parse(file).name}
 
   logger.info("generating merged video:", outFullPath);
 
-  await generateVideo(concatList, pngFullpath, outFullPath, chaptersFullpath);
+  await generateVideo(concatList, imagePath, outFullPath, chaptersFullpath);
 }
 
-async function processSingleFiles(cwd, files) {
+async function processSingleFiles(cwd, files, imagePath) {
   for (let file of files) {
     const fullPath = path.join(cwd, file);
 
@@ -137,11 +138,16 @@ async function processSingleFiles(cwd, files) {
       continue;
     }
 
-    await processSingleFile(cwd, file);
+    await processSingleFile(cwd, file, imagePath);
   }
 }
 
-async function generateVideo(audioFullpath, pngFullpath, outFullpath, chaptersFullpath) {
+async function generateVideo(
+  audioFullpath,
+  pngFullpath,
+  outFullpath,
+  chaptersFullpath
+) {
   logger.log("  generateVideo ffmpeg location:", ffmpegPath);
 
   if (await fsExtra.exists(outFullpath)) {
@@ -150,7 +156,11 @@ async function generateVideo(audioFullpath, pngFullpath, outFullpath, chaptersFu
 
   // ffmpeg -loop 1 -framerate 2 -i <pngFullpath> -i <audioFullpath> -c:v libx264 -preset medium -tune stillimage -crf 18 -c:a copy -shortest -pix_fmt yuv420p -s:v 1920x1080 <outFullpath>
   const { stdout } = await execAsync(
-    `"${ffmpegPath}" -loop 1 -framerate 2 -i "${pngFullpath}" -i "${audioFullpath}" ${chaptersFullpath ? ` -i "${chaptersFullpath}" -map_metadata 1 -codec copy` : ""} -c:v libx264 -preset medium -tune stillimage -crf 18 -c:a copy -shortest -pix_fmt yuv420p -s:v 1920x1080 "${outFullpath}"`
+    `"${ffmpegPath}" -loop 1 -framerate 2 -i "${pngFullpath}" -i "${audioFullpath}" ${
+      chaptersFullpath
+        ? ` -i "${chaptersFullpath}" -map_metadata 1 -codec copy`
+        : ""
+    } -c:v libx264 -preset medium -tune stillimage -crf 18 -c:a copy -shortest -pix_fmt yuv420p -s:v 1920x1080 "${outFullpath}"`
   );
 
   // const { stdout } = await execa(ffmpegPath, [
@@ -193,21 +203,24 @@ async function getRuntime(fullPath) {
   return parseInt(floatRuntime * 1000);
 }
 
-async function processSingleFile(cwd, file) {
+async function processSingleFile(cwd, file, imagePath) {
   logger.info("processing file", file);
 
   const nameWithoutExtension = path.parse(file).name;
 
   logger.log("  nameWithoutExtension:", nameWithoutExtension);
 
-  await textToPng(
-    nameWithoutExtension,
-    path.join(cwd, `${nameWithoutExtension}.png`)
-  );
+  if (!imagePath) {
+    await textToPng(
+      nameWithoutExtension,
+      path.join(cwd, `${nameWithoutExtension}.png`)
+    );
+    imagePath = path.join(cwd, `${albumName}.png`);
+  }
 
   await generateVideo(
     path.join(cwd, file),
-    path.join(cwd, `${nameWithoutExtension}.png`),
+    imagePath,
     path.join(cwd, `${nameWithoutExtension}.mp4`)
   );
 }
@@ -231,9 +244,9 @@ async function processSingleFile(cwd, file) {
     logger.log("files:", files);
 
     if (options.merge) {
-      await processMergeFiles(cwd, files);
+      await processMergeFiles(cwd, files, options.image);
     } else {
-      await processSingleFiles(cwd, files);
+      await processSingleFiles(cwd, files, option.image);
     }
   } catch (err) {
     logger.error("Exception:", err);
