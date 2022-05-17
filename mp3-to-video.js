@@ -58,7 +58,7 @@ async function textToPng(text, fullPath) {
 async function processMergeFiles(cwd, files, imagePath) {
   let concatList = "";
   let ffmpegMetadata = "";
-  let youtubeChapters = "";
+  let youtubeChapters = "▬ Chapters ▬▬▬▬▬▬▬▬▬▬";
   let totalRuntime = 0;
 
   for (let file of files) {
@@ -91,10 +91,10 @@ END=${totalRuntime + runtimeMs}
 title=${path.parse(file).name}
 `;
 
-    youtubeChapters += `${getTimeString(parseInt(totalRuntime / 1000))} - ${
+    youtubeChapters += `
+${getTimeString(parseInt(totalRuntime / 1000))} - ${
       path.parse(file).name
-    }
-`;
+    }`;
 
     totalRuntime += runtimeMs;
   }
