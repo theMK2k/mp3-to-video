@@ -58,6 +58,7 @@ async function textToPng(text, fullPath) {
 async function processMergeFiles(cwd, files, imagePath) {
   let concatList = "";
   let ffmpegMetadata = "";
+  let youtubeChapters = "";
   let totalRuntime = 0;
 
   for (let file of files) {
@@ -89,6 +90,12 @@ START=${totalRuntime + 1}
 END=${totalRuntime + runtimeMs}
 title=${path.parse(file).name}
 `;
+
+    youtubeChapters += `${getTimeString(parseInt(totalRuntime / 1000))} - ${
+      path.parse(file).name
+    }
+`;
+
     totalRuntime += runtimeMs;
   }
 
@@ -104,6 +111,9 @@ title=${path.parse(file).name}
   const chaptersFullpath = path.join(cwd, `${albumName}.txt`);
   await fsExtra.writeFile(chaptersFullpath, ffmpegMetadata);
 
+  const youtubeChaptersFullpath = path.join(cwd, `${albumName}-Youtube_Chapters.txt`);
+  await fsExtra.writeFile(youtubeChaptersFullpath, youtubeChapters);
+
   if (!imagePath) {
     await textToPng(albumName, imagePath);
     imagePath = path.join(cwd, `${albumName}.png`);
@@ -116,7 +126,6 @@ title=${path.parse(file).name}
   }
 
   logger.info("generating merged video:", outFullPath);
-
   await generateVideo(concatList, imagePath, outFullPath, chaptersFullpath);
 }
 
@@ -223,6 +232,27 @@ async function processSingleFile(cwd, file, imagePath) {
     imagePath,
     path.join(cwd, `${nameWithoutExtension}.mp4`)
   );
+}
+
+function getTimeString(runtimeSeconds) {
+  let result = "";
+
+  if (typeof runtimeSeconds !== "number") {
+    return "";
+  }
+
+  const hours = Math.floor(runtimeSeconds / (60 * 60));
+  if (hours > 0) {
+    result += `${hours}:`;
+  }
+
+  const minutes = Math.floor(runtimeSeconds / 60) % 60;
+  result += `${minutes < 10 ? "0" + minutes : minutes}:`;
+
+  const seconds = runtimeSeconds % 60;
+  result += seconds < 10 ? "0" + seconds : seconds;
+
+  return result;
 }
 
 (async () => {
